@@ -44,13 +44,6 @@ struct EpubNativePackageDocument {
 };
 
 // ============================================================================
-// Namespace Constants (matching Java implementation)
-// ============================================================================
-
-static const char* NAMESPACE_OPF = "http://www.idpf.org/2007/opf";
-static const char* NAMESPACE_DC = "http://purl.org/dc/elements/1.1/";
-
-// ============================================================================
 // Helper Functions
 // ============================================================================
 

@@ -25,7 +25,7 @@ static void write_toc_entries(
     std::ostringstream& ss,
     const EpubNativeTOCReference* toc_refs,
     size_t toc_count,
-    int indent_level
+    size_t indent_level
 ) {
     std::string indent(indent_level * 2, ' ');
     

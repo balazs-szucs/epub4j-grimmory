@@ -24,10 +24,10 @@
 struct EpubNativeArchive {
 #ifdef HAVE_LIBARCHIVE
     struct archive* archive;
-    std::vector<char> buffer; // For memory archives
 #else
     int dummy; // Placeholder when libarchive is not available
 #endif
+    std::vector<char> buffer; // For memory archives
     std::string filepath;
     std::string last_error;
 };
