@@ -3,15 +3,14 @@
  *
  * Uses libarchive for robust ZIP/EPUB file handling with better
  * error recovery than Java's ZipInputStream.
+ * All dependencies are statically linked via FetchContent.
  */
 
 #include "epub_native.h"
 #include "epub_native_internal.h"
 
-#ifdef HAVE_LIBARCHIVE
 #include <archive.h>
 #include <archive_entry.h>
-#endif
 
 #include <vector>
 #include <string>
@@ -22,17 +21,12 @@
 // ============================================================================
 
 struct EpubNativeArchive {
-#ifdef HAVE_LIBARCHIVE
     struct archive* archive;
-#else
-    int dummy; // Placeholder when libarchive is not available
-#endif
     std::vector<char> buffer; // For memory archives
     std::string filepath;
     std::string last_error;
 };
 
-#ifdef HAVE_LIBARCHIVE
 static bool reopen_archive(EpubNativeArchive* archive_wrapper, std::string& error_message) {
     if (!archive_wrapper) {
         error_message = "Invalid archive wrapper";
@@ -74,7 +68,6 @@ static bool reopen_archive(EpubNativeArchive* archive_wrapper, std::string& erro
 
     return true;
 }
-#endif
 
 // ============================================================================
 // Archive Implementation
@@ -93,7 +86,6 @@ EPUB_NATIVE_API EpubNativeError epub_native_archive_open(
         auto archive_wrapper = new EpubNativeArchive();
         archive_wrapper->filepath = filepath;
 
-#ifdef HAVE_LIBARCHIVE
         archive_wrapper->archive = archive_read_new();
         if (!archive_wrapper->archive) {
             delete archive_wrapper;
@@ -124,9 +116,6 @@ EPUB_NATIVE_API EpubNativeError epub_native_archive_open(
             set_error(err.c_str());
             return EPUB_NATIVE_ERROR_IO;
         }
-#else
-        archive_wrapper->dummy = 0;
-#endif
 
         *out_archive = archive_wrapper;
         return EPUB_NATIVE_SUCCESS;
@@ -154,7 +143,6 @@ EPUB_NATIVE_API EpubNativeError epub_native_archive_open_memory(
         auto archive_wrapper = new EpubNativeArchive();
         archive_wrapper->buffer.assign(data, data + data_length);
 
-#ifdef HAVE_LIBARCHIVE
         archive_wrapper->archive = archive_read_new();
         if (!archive_wrapper->archive) {
             delete archive_wrapper;
@@ -179,9 +167,6 @@ EPUB_NATIVE_API EpubNativeError epub_native_archive_open_memory(
             set_error("Failed to open memory archive");
             return EPUB_NATIVE_ERROR_IO;
         }
-#else
-        archive_wrapper->dummy = 0;
-#endif
 
         *out_archive = archive_wrapper;
         return EPUB_NATIVE_SUCCESS;
@@ -197,11 +182,9 @@ EPUB_NATIVE_API EpubNativeError epub_native_archive_open_memory(
 
 EPUB_NATIVE_API void epub_native_archive_free(EpubNativeArchive* archive_wrapper) {
     if (archive_wrapper) {
-#ifdef HAVE_LIBARCHIVE
         if (archive_wrapper->archive) {
             archive_read_free(archive_wrapper->archive);
         }
-#endif
         delete archive_wrapper;
     }
 }
@@ -216,7 +199,6 @@ EPUB_NATIVE_API EpubNativeError epub_native_archive_list_entries(
         return EPUB_NATIVE_ERROR_INVALID_ARG;
     }
 
-#ifdef HAVE_LIBARCHIVE
     try {
         std::vector<std::string> entries;
 
@@ -279,12 +261,6 @@ EPUB_NATIVE_API EpubNativeError epub_native_archive_list_entries(
         set_error("Unknown error listing archive entries");
         return EPUB_NATIVE_ERROR_IO;
     }
-#else
-    // Fallback: return empty list
-    *out_entries = nullptr;
-    *out_count = 0;
-    return EPUB_NATIVE_SUCCESS;
-#endif
 }
 
 EPUB_NATIVE_API void epub_native_archive_free_string_array(
@@ -310,7 +286,6 @@ EPUB_NATIVE_API EpubNativeError epub_native_archive_read_entry(
         return EPUB_NATIVE_ERROR_INVALID_ARG;
     }
 
-#ifdef HAVE_LIBARCHIVE
     try {
         std::string reopen_error;
         if (!reopen_archive(archive_wrapper, reopen_error)) {
@@ -382,11 +357,6 @@ EPUB_NATIVE_API EpubNativeError epub_native_archive_read_entry(
         set_error("Unknown error reading archive entry");
         return EPUB_NATIVE_ERROR_IO;
     }
-#else
-    // Fallback: not supported without libarchive
-    set_error("Archive reading not supported (libarchive not available)");
-    return EPUB_NATIVE_ERROR_IO;
-#endif
 }
 
 EPUB_NATIVE_API EpubNativeError epub_native_archive_entry_exists(
@@ -398,7 +368,6 @@ EPUB_NATIVE_API EpubNativeError epub_native_archive_entry_exists(
         return EPUB_NATIVE_ERROR_INVALID_ARG;
     }
 
-#ifdef HAVE_LIBARCHIVE
     try {
         std::string reopen_error;
         if (!reopen_archive(archive_wrapper, reopen_error)) {
@@ -422,7 +391,4 @@ EPUB_NATIVE_API EpubNativeError epub_native_archive_entry_exists(
     } catch (...) {
         return EPUB_NATIVE_ERROR_IO;
     }
-#else
-    return EPUB_NATIVE_ERROR_NOT_FOUND;
-#endif
 }

@@ -74,6 +74,9 @@ val buildNative by tasks.registering(Exec::class) {
     }
     if (os.contains("win")) {
         cmakeArgs += listOf("-G", "Ninja")
+    } else {
+        // Single-config generators (Unix Makefiles) ignore --config; set build type at configure time
+        cmakeArgs += "-DCMAKE_BUILD_TYPE=Release"
     }
 
     commandLine(listOf("cmake") + cmakeArgs)

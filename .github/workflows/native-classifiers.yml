@@ -36,6 +36,18 @@ jobs:
             lib_path: epub4j-native/cpp/build/libepub4j_native.so
             gradle_args: ""
 
+          - classifier: linux-musl-x86_64
+            runner: ubuntu-latest
+            lib_name: libepub4j_native.so
+            lib_path: epub4j-native/cpp/build/libepub4j_native.so
+            musl_docker: true
+
+          - classifier: linux-musl-aarch64
+            runner: ubuntu-24.04-arm
+            lib_name: libepub4j_native.so
+            lib_path: epub4j-native/cpp/build/libepub4j_native.so
+            musl_docker: true
+
           - classifier: macos-x86_64
             runner: macos-15-intel
             lib_name: libepub4j_native.dylib
@@ -59,19 +71,33 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
       - name: Set up JDK 25
+        if: ${{ !matrix.musl_docker }}
         uses: actions/setup-java@be666c2fcd27ec809703dec50e508c2fdc7f6654 # v5.2.0
         with:
           distribution: temurin
           java-version: '25'
 
       - name: Set up Gradle
+        if: ${{ !matrix.musl_docker }}
         uses: gradle/actions/setup-gradle@39e147cb9de83bb9910b8ef8bd7fff0ee20fcd6f # v6.0.1
 
       - name: Build native library (Unix)
-        if: runner.os != 'Windows'
+        if: runner.os != 'Windows' && !matrix.musl_docker
         shell: bash
         run: |
           ./gradlew :epub4j-native:buildNativeRelease ${{ matrix.gradle_args }}
+
+      - name: Build native library (musl/Alpine Docker)
+        if: ${{ matrix.musl_docker }}
+        shell: bash
+        run: |
+          docker run --rm \
+            -v "${{ github.workspace }}:/workspace" \
+            -w /workspace/epub4j-native/cpp \
+            alpine:3.21 sh -c '
+              apk add --no-cache cmake g++ make git &&
+              cmake -B build -DCMAKE_BUILD_TYPE=Release &&
+              cmake --build build'
 
       - name: Build native library (Windows)
         if: runner.os == 'Windows'
@@ -132,12 +158,16 @@ jobs:
         run: |
           mkdir -p epub4j-native/java/src/main/resources/linux-x86_64
           mkdir -p epub4j-native/java/src/main/resources/linux-aarch64
+          mkdir -p epub4j-native/java/src/main/resources/linux-musl-x86_64
+          mkdir -p epub4j-native/java/src/main/resources/linux-musl-aarch64
           mkdir -p epub4j-native/java/src/main/resources/macos-x86_64
           mkdir -p epub4j-native/java/src/main/resources/macos-aarch64
           mkdir -p epub4j-native/java/src/main/resources/windows-x86_64
 
           cp /tmp/staged-native/staged-linux-x86_64/libepub4j_native.so epub4j-native/java/src/main/resources/linux-x86_64/libepub4j_native.so
           cp /tmp/staged-native/staged-linux-aarch64/libepub4j_native.so epub4j-native/java/src/main/resources/linux-aarch64/libepub4j_native.so
+          cp /tmp/staged-native/staged-linux-musl-x86_64/libepub4j_native.so epub4j-native/java/src/main/resources/linux-musl-x86_64/libepub4j_native.so
+          cp /tmp/staged-native/staged-linux-musl-aarch64/libepub4j_native.so epub4j-native/java/src/main/resources/linux-musl-aarch64/libepub4j_native.so
           cp /tmp/staged-native/staged-macos-x86_64/libepub4j_native.dylib epub4j-native/java/src/main/resources/macos-x86_64/libepub4j_native.dylib
           cp /tmp/staged-native/staged-macos-aarch64/libepub4j_native.dylib epub4j-native/java/src/main/resources/macos-aarch64/libepub4j_native.dylib
           cp /tmp/staged-native/staged-windows-x86_64/epub4j_native.dll epub4j-native/java/src/main/resources/windows-x86_64/epub4j_native.dll
@@ -168,12 +198,16 @@ jobs:
         run: |
           mkdir -p epub4j-native/java/src/main/resources/linux-x86_64
           mkdir -p epub4j-native/java/src/main/resources/linux-aarch64
+          mkdir -p epub4j-native/java/src/main/resources/linux-musl-x86_64
+          mkdir -p epub4j-native/java/src/main/resources/linux-musl-aarch64
           mkdir -p epub4j-native/java/src/main/resources/macos-x86_64
           mkdir -p epub4j-native/java/src/main/resources/macos-aarch64
           mkdir -p epub4j-native/java/src/main/resources/windows-x86_64
 
           cp /tmp/staged-native/staged-linux-x86_64/libepub4j_native.so epub4j-native/java/src/main/resources/linux-x86_64/libepub4j_native.so
           cp /tmp/staged-native/staged-linux-aarch64/libepub4j_native.so epub4j-native/java/src/main/resources/linux-aarch64/libepub4j_native.so
+          cp /tmp/staged-native/staged-linux-musl-x86_64/libepub4j_native.so epub4j-native/java/src/main/resources/linux-musl-x86_64/libepub4j_native.so
+          cp /tmp/staged-native/staged-linux-musl-aarch64/libepub4j_native.so epub4j-native/java/src/main/resources/linux-musl-aarch64/libepub4j_native.so
           cp /tmp/staged-native/staged-macos-x86_64/libepub4j_native.dylib epub4j-native/java/src/main/resources/macos-x86_64/libepub4j_native.dylib
           cp /tmp/staged-native/staged-macos-aarch64/libepub4j_native.dylib epub4j-native/java/src/main/resources/macos-aarch64/libepub4j_native.dylib
           cp /tmp/staged-native/staged-windows-x86_64/epub4j_native.dll epub4j-native/java/src/main/resources/windows-x86_64/epub4j_native.dll
