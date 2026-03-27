@@ -26,7 +26,7 @@ jobs:
         uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
         with:
           path: epub4j-native/cpp/build
-          key: native-${{ runner.os }}-${{ hashFiles('epub4j-native/cpp/**') }}
+          key: native-${{ runner.os }}-${{ hashFiles('epub4j-native/cpp/CMakeLists.txt', 'epub4j-native/cpp/src/**', 'epub4j-native/cpp/include/**') }}
           restore-keys: native-${{ runner.os }}-
 
       - run: ./gradlew clean check --warning-mode all
