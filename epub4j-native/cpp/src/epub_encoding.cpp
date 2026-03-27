@@ -1,18 +1,22 @@
 /**
  * epub_encoding.cpp - Encoding Detection and Conversion Implementation
  *
- * Uses ICU (International Components for Unicode) for encoding detection
- * and conversion.
+ * Uses uchardet for encoding detection and iconv (POSIX) / Win32 API
+ * for UTF-8 conversion. All dependencies are statically linked.
  */
 
 #include "epub_native.h"
 #include "epub_native_internal.h"
 #include <cstdlib>
+#include <cstring>
+#include <uchardet.h>
 
-#ifdef HAVE_ICU
-#include <unicode/ucsdet.h>
-#include <unicode/ucnv.h>
-#include <unicode/ustring.h>
+#ifdef _WIN32
+#include <windows.h>
+#include <vector>
+#else
+#include <iconv.h>
+#include <cerrno>
 #endif
 
 // ============================================================================
@@ -20,13 +24,34 @@
 // ============================================================================
 
 struct EpubNativeEncodingDetector {
-#ifdef HAVE_ICU
-    UCharsetDetector* detector;
-#else
-    int dummy; // Placeholder when ICU is not available
-#endif
+    uchardet_t handle;
     std::string last_error;
 };
+
+#ifdef _WIN32
+// Map common encoding names to Windows code pages
+static UINT encoding_to_codepage(const char* name) {
+    struct Mapping { const char* name; UINT cp; };
+    static const Mapping mappings[] = {
+        {"UTF-8", 65001}, {"UTF8", 65001},
+        {"ASCII", 20127}, {"US-ASCII", 20127},
+        {"ISO-8859-1", 28591}, {"LATIN1", 28591},
+        {"ISO-8859-2", 28592}, {"ISO-8859-15", 28605},
+        {"WINDOWS-1250", 1250}, {"WINDOWS-1251", 1251},
+        {"WINDOWS-1252", 1252}, {"WINDOWS-1253", 1253},
+        {"WINDOWS-1254", 1254}, {"WINDOWS-1255", 1255},
+        {"WINDOWS-1256", 1256},
+        {"SHIFT_JIS", 932}, {"SHIFT-JIS", 932},
+        {"EUC-JP", 51932}, {"EUC-KR", 51949},
+        {"GB2312", 936}, {"GBK", 936}, {"GB18030", 54936},
+        {"BIG5", 950}, {"KOI8-R", 20866}, {"KOI8-U", 21866},
+    };
+    for (const auto& m : mappings) {
+        if (_stricmp(name, m.name) == 0) return m.cp;
+    }
+    return 65001; // Fallback to UTF-8
+}
+#endif
 
 // ============================================================================
 // Encoding Detector Implementation
@@ -42,18 +67,12 @@ EPUB_NATIVE_API EpubNativeError epub_native_encoding_detector_create(
 
     try {
         auto detector = new EpubNativeEncodingDetector();
-
-#ifdef HAVE_ICU
-        UErrorCode status = U_ZERO_ERROR;
-        detector->detector = ucsdet_open(&status);
-        if (U_FAILURE(status)) {
-            set_error("Failed to create ICU charset detector");
+        detector->handle = uchardet_new();
+        if (!detector->handle) {
+            set_error("Failed to create uchardet detector");
             delete detector;
             return EPUB_NATIVE_ERROR_MEMORY;
         }
-#else
-        detector->dummy = 0;
-#endif
 
         *out_detector = detector;
         return EPUB_NATIVE_SUCCESS;
@@ -71,11 +90,9 @@ EPUB_NATIVE_API void epub_native_encoding_detector_free(
     EpubNativeEncodingDetector* detector
 ) {
     if (detector) {
-#ifdef HAVE_ICU
-        if (detector->detector) {
-            ucsdet_close(detector->detector);
+        if (detector->handle) {
+            uchardet_delete(detector->handle);
         }
-#endif
         delete detector;
     }
 }
@@ -92,45 +109,32 @@ EPUB_NATIVE_API EpubNativeError epub_native_detect_encoding(
         return EPUB_NATIVE_ERROR_INVALID_ARG;
     }
 
-#ifdef HAVE_ICU
     try {
-        UErrorCode status = U_ZERO_ERROR;
-        
-        // Set the text to be analyzed
-        ucsdet_setText(detector->detector, data, static_cast<int32_t>(data_length), &status);
-        if (U_FAILURE(status)) {
-            set_error("Failed to set text for encoding detection");
-            return EPUB_NATIVE_ERROR_INVALID_ARG;
+        uchardet_reset(detector->handle);
+
+        int rv = uchardet_handle_data(detector->handle, data, data_length);
+        if (rv != 0) {
+            set_error("uchardet_handle_data failed");
+            return EPUB_NATIVE_ERROR_PARSE;
         }
 
-        // Find the matching encoding
-        const UCharsetMatch* match = ucsdet_detect(detector->detector, &status);
-        if (U_FAILURE(status) || !match) {
-            set_error("Failed to detect encoding");
-            return EPUB_NATIVE_ERROR_NOT_FOUND;
+        uchardet_data_end(detector->handle);
+
+        const char* charset = uchardet_get_charset(detector->handle);
+        if (!charset || charset[0] == '\0') {
+            // Detection failed; fall back to UTF-8
+            *out_encoding = duplicate_cstring("UTF-8");
+            *out_confidence = 0;
+        } else {
+            *out_encoding = duplicate_cstring(charset);
+            *out_confidence = 100;
         }
 
-        // Get the encoding name
-        const char* encoding = ucsdet_getName(match, &status);
-        if (U_FAILURE(status) || !encoding) {
-            set_error("Failed to get encoding name");
-            return EPUB_NATIVE_ERROR_NOT_FOUND;
-        }
-
-        // Get confidence level
-        int32_t confidence = ucsdet_getConfidence(match, &status);
-        if (U_FAILURE(status)) {
-            confidence = 50; // Default confidence
-        }
-
-        // Allocate and copy encoding name
-        *out_encoding = duplicate_cstring(encoding);
         if (!*out_encoding) {
             set_error("Memory allocation failed");
             return EPUB_NATIVE_ERROR_MEMORY;
         }
 
-        *out_confidence = static_cast<int>(confidence);
         return EPUB_NATIVE_SUCCESS;
 
     } catch (const std::bad_alloc&) {
@@ -140,16 +144,6 @@ EPUB_NATIVE_API EpubNativeError epub_native_detect_encoding(
         set_error("Unknown error detecting encoding");
         return EPUB_NATIVE_ERROR_PARSE;
     }
-#else
-    // Fallback: assume UTF-8 when ICU is not available
-    *out_encoding = duplicate_cstring("UTF-8");
-    *out_confidence = 50; // Medium confidence for fallback
-    if (!*out_encoding) {
-        set_error("Memory allocation failed");
-        return EPUB_NATIVE_ERROR_MEMORY;
-    }
-    return EPUB_NATIVE_SUCCESS;
-#endif
 }
 
 EPUB_NATIVE_API EpubNativeError epub_native_convert_to_utf8(
@@ -164,60 +158,42 @@ EPUB_NATIVE_API EpubNativeError epub_native_convert_to_utf8(
         return EPUB_NATIVE_ERROR_INVALID_ARG;
     }
 
-#ifdef HAVE_ICU
+#ifdef _WIN32
     try {
-        UErrorCode status = U_ZERO_ERROR;
-        
-        // Open converter for source encoding
-        UConverter* converter = ucnv_open(source_encoding, &status);
-        if (U_FAILURE(status)) {
-            std::string err = "Failed to open converter for encoding: ";
-            err += source_encoding;
-            set_error(err.c_str());
-            return EPUB_NATIVE_ERROR_INVALID_ARG;
-        }
+        UINT source_cp = encoding_to_codepage(source_encoding);
 
-        // Calculate required UTF-8 buffer size
-        int32_t utf8_length = ucnv_toAlgorithmic(
-            UCNV_UTF8, converter,
-            nullptr, 0,
-            source_data, static_cast<int32_t>(source_length),
-            &status
-        );
-        if (utf8_length < 0) {
-            ucnv_close(converter);
-            set_error("Failed to compute UTF-8 output length");
+        // Source encoding → wide (UTF-16)
+        int wlen = MultiByteToWideChar(source_cp, 0, source_data,
+            static_cast<int>(source_length), nullptr, 0);
+        if (wlen <= 0) {
+            set_error("MultiByteToWideChar failed for source encoding");
             return EPUB_NATIVE_ERROR_PARSE;
         }
-        
-        // Reset status and allocate buffer
-        status = U_ZERO_ERROR;
-        char* utf8_buffer = static_cast<char*>(malloc(static_cast<size_t>(utf8_length) + 1));
-        if (!utf8_buffer) {
-            ucnv_close(converter);
+
+        std::vector<wchar_t> wbuf(static_cast<size_t>(wlen));
+        MultiByteToWideChar(source_cp, 0, source_data,
+            static_cast<int>(source_length), wbuf.data(), wlen);
+
+        // Wide (UTF-16) → UTF-8
+        int ulen = WideCharToMultiByte(CP_UTF8, 0, wbuf.data(), wlen,
+            nullptr, 0, nullptr, nullptr);
+        if (ulen <= 0) {
+            set_error("WideCharToMultiByte failed for UTF-8 conversion");
+            return EPUB_NATIVE_ERROR_PARSE;
+        }
+
+        char* result = static_cast<char*>(malloc(static_cast<size_t>(ulen) + 1));
+        if (!result) {
             set_error("Memory allocation failed");
             return EPUB_NATIVE_ERROR_MEMORY;
         }
 
-        // Convert to UTF-8
-        int32_t result = ucnv_toAlgorithmic(
-            UCNV_UTF8, converter,
-            utf8_buffer, utf8_length + 1,
-            source_data, static_cast<int32_t>(source_length),
-            &status
-        );
+        WideCharToMultiByte(CP_UTF8, 0, wbuf.data(), wlen,
+            result, ulen, nullptr, nullptr);
+        result[ulen] = '\0';
 
-        ucnv_close(converter);
-
-        if (U_FAILURE(status)) {
-            free(utf8_buffer);
-            set_error("Conversion to UTF-8 failed");
-            return EPUB_NATIVE_ERROR_PARSE;
-        }
-
-        utf8_buffer[result] = '\0';
-        *out_utf8 = utf8_buffer;
-        *out_utf8_length = static_cast<size_t>(result);
+        *out_utf8 = result;
+        *out_utf8_length = static_cast<size_t>(ulen);
         return EPUB_NATIVE_SUCCESS;
 
     } catch (const std::bad_alloc&) {
@@ -228,13 +204,51 @@ EPUB_NATIVE_API EpubNativeError epub_native_convert_to_utf8(
         return EPUB_NATIVE_ERROR_PARSE;
     }
 #else
-    // Fallback: assume source is already UTF-8
-    *out_utf8 = duplicate_cstring(source_data);
-    *out_utf8_length = source_length;
-    if (!*out_utf8) {
+    try {
+        iconv_t cd = iconv_open("UTF-8", source_encoding);
+        if (cd == (iconv_t)(-1)) {
+            std::string err = "iconv_open failed for encoding: ";
+            err += source_encoding;
+            set_error(err.c_str());
+            return EPUB_NATIVE_ERROR_INVALID_ARG;
+        }
+
+        // Allocate output buffer (worst case: 4x expansion for single-byte → UTF-8)
+        size_t out_size = source_length * 4 + 4;
+        char* out_buf = static_cast<char*>(malloc(out_size));
+        if (!out_buf) {
+            iconv_close(cd);
+            set_error("Memory allocation failed");
+            return EPUB_NATIVE_ERROR_MEMORY;
+        }
+
+        char* in_ptr = const_cast<char*>(source_data);
+        size_t in_left = source_length;
+        char* out_ptr = out_buf;
+        size_t out_left = out_size - 1;
+
+        size_t result = iconv(cd, &in_ptr, &in_left, &out_ptr, &out_left);
+        iconv_close(cd);
+
+        if (result == static_cast<size_t>(-1)) {
+            free(out_buf);
+            set_error("iconv conversion to UTF-8 failed");
+            return EPUB_NATIVE_ERROR_PARSE;
+        }
+
+        size_t converted = static_cast<size_t>(out_ptr - out_buf);
+        out_buf[converted] = '\0';
+
+        *out_utf8 = out_buf;
+        *out_utf8_length = converted;
+        return EPUB_NATIVE_SUCCESS;
+
+    } catch (const std::bad_alloc&) {
         set_error("Memory allocation failed");
         return EPUB_NATIVE_ERROR_MEMORY;
+    } catch (...) {
+        set_error("Unknown error converting to UTF-8");
+        return EPUB_NATIVE_ERROR_PARSE;
     }
-    return EPUB_NATIVE_SUCCESS;
 #endif
 }

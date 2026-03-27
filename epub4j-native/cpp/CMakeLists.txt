@@ -13,7 +13,8 @@ option(EPUB4J_NATIVE_BUILD_SHARED "Build shared library" ON)
 option(EPUB4J_NATIVE_BUILD_STATIC "Build static library" OFF)
 option(EPUB4J_NATIVE_USE_SYSTEM_PUGIXML "Use system-installed pugixml" OFF)
 option(EPUB4J_NATIVE_USE_SYSTEM_GUMBO "Use system-installed gumbo" OFF)
-option(EPUB4J_NATIVE_USE_SYSTEM_ICU "Use system-installed ICU" OFF)
+option(EPUB4J_NATIVE_USE_SYSTEM_UCHARDET "Use system-installed uchardet" OFF)
+option(EPUB4J_NATIVE_USE_SYSTEM_ZLIB "Use system-installed zlib" OFF)
 option(EPUB4J_NATIVE_USE_SYSTEM_LIBARCHIVE "Use system-installed libarchive" OFF)
 
 if(EPUB4J_NATIVE_BUILD_SHARED AND EPUB4J_NATIVE_BUILD_STATIC)
@@ -43,22 +44,41 @@ else()
     endif()
 endif()
 
-# Dependency resolution: use system packages when requested, otherwise fetch pinned sources.
+# ============================================================================
+# Dependency resolution
+# All FetchContent'd dependencies are built as static libraries and linked into
+# the single shared library. No system dependencies beyond the C runtime.
+# ============================================================================
+set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
+include(FetchContent)
+
+# Allow FetchContent'd deps with older cmake_minimum_required versions (CMake 4.x compat)
+set(CMAKE_POLICY_VERSION_MINIMUM 3.5)
+
+# Allow FetchContent_Populate for source-only deps (gumbo has no CMakeLists.txt)
+if(POLICY CMP0169)
+    cmake_policy(SET CMP0169 OLD)
+endif()
+
 set(PUGIXML_INCLUDE_DIRS "")
 set(PUGIXML_LINK_TARGETS "")
 set(GUMBO_INCLUDE_DIRS "")
 set(GUMBO_LINK_LIBS "")
 set(GUMBO_SOURCES "")
+set(UCHARDET_INCLUDE_DIRS "")
+set(UCHARDET_LINK_TARGETS "")
+set(LIBARCHIVE_LINK_TARGETS "")
 
-if(EPUB4J_NATIVE_USE_SYSTEM_PUGIXML OR EPUB4J_NATIVE_USE_SYSTEM_GUMBO)
+if(EPUB4J_NATIVE_USE_SYSTEM_PUGIXML OR EPUB4J_NATIVE_USE_SYSTEM_GUMBO OR
+   EPUB4J_NATIVE_USE_SYSTEM_UCHARDET OR EPUB4J_NATIVE_USE_SYSTEM_LIBARCHIVE)
     find_package(PkgConfig REQUIRED)
 endif()
 
+# --- pugixml v1.14 ---
 if(EPUB4J_NATIVE_USE_SYSTEM_PUGIXML)
     pkg_check_modules(PUGIXML REQUIRED pugixml)
     set(PUGIXML_LINK_TARGETS ${PUGIXML_LINK_LIBRARIES})
 else()
-    include(FetchContent)
     FetchContent_Declare(
         pugixml
         GIT_REPOSITORY https://github.com/zeux/pugixml.git
@@ -69,11 +89,11 @@ else()
     list(APPEND PUGIXML_LINK_TARGETS pugixml)
 endif()
 
+# --- gumbo-parser 0.13.2 (compiled inline; no CMakeLists.txt in project) ---
 if(EPUB4J_NATIVE_USE_SYSTEM_GUMBO)
     pkg_check_modules(GUMBO REQUIRED gumbo)
     set(GUMBO_LINK_LIBS ${GUMBO_LINK_LIBRARIES})
 else()
-    include(FetchContent)
     FetchContent_Declare(
         gumbo
         GIT_REPOSITORY https://codeberg.org/gumbo-parser/gumbo-parser.git
@@ -96,38 +116,85 @@ else()
     )
 endif()
 
-# ICU dependency for encoding detection
-set(ICU_LINK_LIBS "")
-set(ICU_DEFINES "")
-if(EPUB4J_NATIVE_USE_SYSTEM_ICU)
-    pkg_check_modules(ICU REQUIRED icu-uc icu-io)
-    set(ICU_LINK_LIBS ${ICU_LINK_LIBRARIES})
-    set(ICU_DEFINES -DHAVE_ICU)
+# --- uchardet v0.0.8 (charset detection; replaces ICU) ---
+if(EPUB4J_NATIVE_USE_SYSTEM_UCHARDET)
+    pkg_check_modules(UCHARDET REQUIRED uchardet)
+    set(UCHARDET_LINK_TARGETS ${UCHARDET_LINK_LIBRARIES})
+    set(UCHARDET_INCLUDE_DIRS ${UCHARDET_INCLUDE_DIRS})
 else()
-    # ICU is typically system-installed; try to find it
-    find_package(ICU COMPONENTS uc io QUIET)
-    if(ICU_FOUND)
-        set(ICU_LINK_LIBS ICU::uc ICU::io)
-        set(ICU_DEFINES -DHAVE_ICU)
+    set(BUILD_BINARY OFF CACHE BOOL "" FORCE)
+    FetchContent_Declare(
+        uchardet
+        URL https://www.freedesktop.org/software/uchardet/releases/uchardet-0.0.8.tar.xz
+        DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+    )
+    FetchContent_MakeAvailable(uchardet)
+    set(UCHARDET_INCLUDE_DIRS ${uchardet_SOURCE_DIR}/src)
+    set(UCHARDET_LINK_TARGETS libuchardet)
+endif()
+
+# --- zlib v1.3.1 (needed by libarchive for ZIP deflate) ---
+if(NOT EPUB4J_NATIVE_USE_SYSTEM_ZLIB AND NOT EPUB4J_NATIVE_USE_SYSTEM_LIBARCHIVE)
+    set(ZLIB_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+    FetchContent_Declare(
+        zlib
+        GIT_REPOSITORY https://github.com/madler/zlib.git
+        GIT_TAG        v1.3.1
+    )
+    FetchContent_MakeAvailable(zlib)
+    # Override any cached/system ZLIB so libarchive uses our FetchContent'd zlib
+    set(ZLIB_FOUND TRUE CACHE BOOL "" FORCE)
+    set(ZLIB_INCLUDE_DIR "${zlib_SOURCE_DIR}" CACHE PATH "" FORCE)
+    set(ZLIB_LIBRARIES zlibstatic CACHE STRING "" FORCE)
+    set(ZLIB_LIBRARY_RELEASE zlibstatic CACHE STRING "" FORCE)
+    # Also need the build dir for the generated zconf.h
+    include_directories("${zlib_BINARY_DIR}")
+    if(NOT TARGET ZLIB::ZLIB)
+        add_library(ZLIB::ZLIB ALIAS zlibstatic)
     endif()
 endif()
 
-# libarchive dependency for ZIP handling
-set(LIBARCHIVE_LINK_LIBS "")
-set(LIBARCHIVE_DEFINES "")
+# --- libarchive v3.7.7 (ZIP/EPUB archive handling) ---
 if(EPUB4J_NATIVE_USE_SYSTEM_LIBARCHIVE)
     pkg_check_modules(LIBARCHIVE REQUIRED libarchive)
-    set(LIBARCHIVE_LINK_LIBS ${LIBARCHIVE_LINK_LIBRARIES})
-    set(LIBARCHIVE_DEFINES -DHAVE_LIBARCHIVE)
+    set(LIBARCHIVE_LINK_TARGETS ${LIBARCHIVE_LINK_LIBRARIES})
 else()
-    # Try to find system libarchive
-    find_package(PkgConfig QUIET)
-    if(PkgConfig_FOUND)
-        pkg_check_modules(LIBARCHIVE libarchive)
-    endif()
-    if(LIBARCHIVE_FOUND)
-        set(LIBARCHIVE_LINK_LIBS ${LIBARCHIVE_LINK_LIBRARIES})
-        set(LIBARCHIVE_DEFINES -DHAVE_LIBARCHIVE)
+    # Disable all features except zlib-based ZIP support
+    set(ENABLE_OPENSSL OFF CACHE BOOL "" FORCE)
+    set(ENABLE_LIBB2 OFF CACHE BOOL "" FORCE)
+    set(ENABLE_LIBXML2 OFF CACHE BOOL "" FORCE)
+    set(ENABLE_EXPAT OFF CACHE BOOL "" FORCE)
+    set(ENABLE_LZMA OFF CACHE BOOL "" FORCE)
+    set(ENABLE_LZ4 OFF CACHE BOOL "" FORCE)
+    set(ENABLE_ZSTD OFF CACHE BOOL "" FORCE)
+    set(ENABLE_BZip2 OFF CACHE BOOL "" FORCE)
+    set(ENABLE_ACL OFF CACHE BOOL "" FORCE)
+    set(ENABLE_XATTR OFF CACHE BOOL "" FORCE)
+    set(ENABLE_PCREPOSIX OFF CACHE BOOL "" FORCE)
+    set(ENABLE_PCRE2POSIX OFF CACHE BOOL "" FORCE)
+    set(ENABLE_LibGCC OFF CACHE BOOL "" FORCE)
+    set(ENABLE_CNG OFF CACHE BOOL "" FORCE)
+    set(ENABLE_MBEDTLS OFF CACHE BOOL "" FORCE)
+    set(ENABLE_NETTLE OFF CACHE BOOL "" FORCE)
+    set(ENABLE_ICONV OFF CACHE BOOL "" FORCE)
+    set(ENABLE_TAR OFF CACHE BOOL "" FORCE)
+    set(ENABLE_CPIO OFF CACHE BOOL "" FORCE)
+    set(ENABLE_CAT OFF CACHE BOOL "" FORCE)
+    set(ENABLE_UNZIP OFF CACHE BOOL "" FORCE)
+    set(ENABLE_TEST OFF CACHE BOOL "" FORCE)
+    set(ENABLE_INSTALL OFF CACHE BOOL "" FORCE)
+    # Disable ext2fs detection (not needed for EPUB/ZIP, may be missing on some systems)
+    set(HAVE_EXT2FS_EXT2_FS_H FALSE CACHE BOOL "" FORCE)
+    FetchContent_Declare(
+        libarchive
+        GIT_REPOSITORY https://github.com/libarchive/libarchive.git
+        GIT_TAG        v3.7.7
+    )
+    FetchContent_MakeAvailable(libarchive)
+    if(TARGET archive_static)
+        set(LIBARCHIVE_LINK_TARGETS archive_static)
+    else()
+        set(LIBARCHIVE_LINK_TARGETS archive)
     endif()
 endif()
 
@@ -147,6 +214,7 @@ set(EPUB4J_NATIVE_INCLUDES
     include
     ${PUGIXML_INCLUDE_DIRS}
     ${GUMBO_INCLUDE_DIRS}
+    ${UCHARDET_INCLUDE_DIRS}
 )
 
 # Create library
@@ -171,16 +239,17 @@ target_link_libraries(epub4j_native
     PRIVATE
     ${PUGIXML_LINK_TARGETS}
     ${GUMBO_LINK_LIBS}
-    ${ICU_LINK_LIBS}
-    ${LIBARCHIVE_LINK_LIBS}
+    ${UCHARDET_LINK_TARGETS}
+    ${LIBARCHIVE_LINK_TARGETS}
 )
 
-# Add compile definitions for optional features
-target_compile_definitions(epub4j_native
-    PRIVATE
-    ${ICU_DEFINES}
-    ${LIBARCHIVE_DEFINES}
-)
+# iconv: part of libc on Linux/musl; link system libiconv on macOS
+if(APPLE)
+    find_library(ICONV_LIB iconv)
+    if(ICONV_LIB)
+        target_link_libraries(epub4j_native PRIVATE ${ICONV_LIB})
+    endif()
+endif()
 
 # Platform-specific settings
 if(WIN32)

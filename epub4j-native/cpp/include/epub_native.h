@@ -321,7 +321,7 @@ EPUB_NATIVE_API const char* epub_native_get_version(void);
 EPUB_NATIVE_API const char* epub_native_get_last_error(void);
 
 // ============================================================================
-// Encoding Detection (ICU-based)
+// Encoding Detection
 // ============================================================================
 
 /**

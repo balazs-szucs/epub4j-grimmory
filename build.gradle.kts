@@ -91,13 +91,13 @@ subprojects {
     extensions.configure<com.diffplug.gradle.spotless.SpotlessExtension>("spotless") {
         format("misc") {
             target("*.md", "*.kts", "*.gradle.kts", "**/*.yml", "**/*.yaml", "**/.gitignore")
-            targetExclude("**/build/**", "**/.gradle/**")
+            targetExclude("**/build/**", "**/.gradle/**", "**/cpp/**")
             trimTrailingWhitespace()
             endWithNewline()
         }
         java {
             target("src/*/java/**/*.java")
-            targetExclude("**/build/**", "**/util/GVersion.java")
+            targetExclude("**/build/**", "**/cpp/**", "**/util/GVersion.java")
             googleJavaFormat("1.35.0")
             removeUnusedImports()
             trimTrailingWhitespace()
