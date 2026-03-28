@@ -107,12 +107,13 @@ EPUB_NATIVE_API EpubNativeError epub_native_archive_open(
         );
 
         if (r != ARCHIVE_OK) {
-            archive_read_free(archive_wrapper->archive);
-            delete archive_wrapper;
             std::string err = "Failed to open archive: ";
             err += filepath;
             err += " - ";
-            err += archive_error_string(archive_wrapper->archive);
+            const char* archive_err = archive_error_string(archive_wrapper->archive);
+            err += archive_err ? archive_err : "unknown error";
+            archive_read_free(archive_wrapper->archive);
+            delete archive_wrapper;
             set_error(err.c_str());
             return EPUB_NATIVE_ERROR_IO;
         }
