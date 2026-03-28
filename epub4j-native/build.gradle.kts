@@ -73,7 +73,8 @@ val buildNative by tasks.registering(Exec::class) {
         cmakeArgs += listOf("-DEPUB4J_NATIVE_USE_SYSTEM_PUGIXML=ON", "-DEPUB4J_NATIVE_USE_SYSTEM_GUMBO=ON")
     }
     if (os.contains("win")) {
-        cmakeArgs += listOf("-G", "Ninja")
+        // Ninja is single-config: set build type at configure time and direct the DLL to Release/
+        cmakeArgs += listOf("-G", "Ninja", "-DCMAKE_BUILD_TYPE=Release", "-DCMAKE_RUNTIME_OUTPUT_DIRECTORY=Release")
     } else {
         // Single-config generators (Unix Makefiles) ignore --config; set build type at configure time
         cmakeArgs += "-DCMAKE_BUILD_TYPE=Release"

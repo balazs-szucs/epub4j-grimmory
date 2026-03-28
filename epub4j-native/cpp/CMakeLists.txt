@@ -260,6 +260,8 @@ if(WIN32)
         EPUB4J_NATIVE_EXPORTS
         _CRT_SECURE_NO_WARNINGS
     )
+    # MinGW adds a "lib" prefix by default; remove it so the DLL is named epub4j_native.dll
+    set_target_properties(epub4j_native PROPERTIES PREFIX "")
 elseif(APPLE)
     set_target_properties(epub4j_native PROPERTIES
         INSTALL_RPATH "@executable_path/../lib"
