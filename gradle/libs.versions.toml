@@ -18,7 +18,7 @@ epubcheck = "5.3.0"
 # https://github.com/lessthanoptimal/gversion-plugin
 gversion-plugin = "1.10.3"
 # https://plugins.gradle.org/plugin/com.gradleup.shadow
-shadow-plugin = "9.4.0"
+shadow-plugin = "9.4.1"
 # https://github.com/allegro/axion-release-plugin
 axion-release-plugin = "1.21.1"
 # https://github.com/melix/jmh-gradle-plugin
