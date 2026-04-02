@@ -151,11 +151,13 @@ This project is licensed under the [GNU Affero General Public License v3.0](LICE
 
 ### Attribution
 
-org.grimmory.epub4j is a fork of [epub4j](https://github.com/documentnode/epub4j) (Apache-2.0). The git history have been kept in-tact from the fork.
+org.grimmory.epub4j is a fork of [epub4j](https://github.com/documentnode/epub4j) (Apache-2.0). The git history have been kept intact from the fork.
 
 New code and substantial modifications are:
 
 - Copyright (C) 2025-2026 Grimmory contributors
 - Copyright (C) 2025-2026 Booklore contributors
 
-Some artifacts were mistankenly published under the wrong license as part of an automation. These were removed since. If you downloaded any of those, they contain viral APGL code.
+Some artifacts were mistakenly published under the wrong license as part of an automation. These were removed since. If you downloaded any of those, they contain viral AGPL code.
+
+Anything after 1.X.X the license, and attribution is correctly stated.
