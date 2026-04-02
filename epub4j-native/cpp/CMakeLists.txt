@@ -147,13 +147,17 @@ if(NOT EPUB4J_NATIVE_USE_SYSTEM_ZLIB AND NOT EPUB4J_NATIVE_USE_SYSTEM_LIBARCHIVE
         GIT_TAG        v1.3.1
     )
     FetchContent_MakeAvailable(zlib)
-    # Override any cached/system ZLIB so libarchive uses our FetchContent'd zlib
+    # zconf.h is generated in the binary dir at configure time.  Copy it next
+    # to zlib.h so that the relative #include "zconf.h" inside zlib.h resolves
+    # even when downstream projects (libpng genout.cmake) compile with only
+    # ZLIB_INCLUDE_DIR on the search path.
+    file(COPY "${zlib_BINARY_DIR}/zconf.h" DESTINATION "${zlib_SOURCE_DIR}")
+    # Override any cached/system ZLIB so libarchive and libpng use our FetchContent'd zlib
     set(ZLIB_FOUND TRUE CACHE BOOL "" FORCE)
     set(ZLIB_INCLUDE_DIR "${zlib_SOURCE_DIR}" CACHE PATH "" FORCE)
     set(ZLIB_LIBRARIES zlibstatic CACHE STRING "" FORCE)
     set(ZLIB_LIBRARY_RELEASE zlibstatic CACHE STRING "" FORCE)
-    # Also need the build dir for the generated zconf.h
-    include_directories("${zlib_BINARY_DIR}")
+    include_directories("${zlib_SOURCE_DIR}" "${zlib_BINARY_DIR}")
     if(NOT TARGET ZLIB::ZLIB)
         add_library(ZLIB::ZLIB ALIAS zlibstatic)
     endif()
