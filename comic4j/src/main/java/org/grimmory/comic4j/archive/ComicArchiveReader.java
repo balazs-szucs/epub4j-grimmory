@@ -8,17 +8,22 @@ package org.grimmory.comic4j.archive;
 import com.github.gotson.nightcompress.Archive;
 import com.github.gotson.nightcompress.ArchiveEntry;
 import com.github.gotson.nightcompress.LibArchiveException;
+import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import org.grimmory.comic4j.domain.ComicBook;
 import org.grimmory.comic4j.domain.ComicInfo;
 import org.grimmory.comic4j.error.ComicError;
 import org.grimmory.comic4j.image.CoverDetector;
+import org.grimmory.comic4j.image.ImageCodec;
+import org.grimmory.comic4j.image.ImageDimensions;
 import org.grimmory.comic4j.image.ImageEntry;
 import org.grimmory.comic4j.image.ImageExtractor;
+import org.grimmory.comic4j.image.ImageProbe;
 import org.grimmory.comic4j.xml.ComicInfoReader;
 
 /**
@@ -153,6 +158,78 @@ public final class ComicArchiveReader {
     return ArchiveDetector.detect(path);
   }
 
+  /**
+   * Lists all image entries with policy enforcement (archive size, entry count limits). Validates
+   * the archive against the policy before returning entries.
+   *
+   * @param path the archive path
+   * @param policy the processing policy to enforce
+   * @return naturally sorted list of image entries
+   */
+  public static List<ImageEntry> listImages(Path path, ComicProcessingPolicy policy) {
+    validatePath(path);
+    validateArchiveSize(path, policy);
+    validateEntries(path, policy);
+    return ImageExtractor.listImageEntries(path);
+  }
+
+  /**
+   * Reads the image dimensions for all pages in the archive by probing image headers. Uses
+   * header-only parsing (no full image decode) for maximum performance.
+   *
+   * @param path the archive path
+   * @return list of dimensions in page order, with null entries for unreadable images
+   */
+  public static List<ImageDimensions> getPageDimensions(Path path) {
+    validatePath(path);
+    List<ImageEntry> images = ImageExtractor.listImageEntries(path);
+    List<ImageDimensions> dimensions = new ArrayList<>(images.size());
+
+    for (ImageEntry image : images) {
+      try {
+        byte[] data = ImageExtractor.extractImage(path, image.name());
+        dimensions.add(ImageProbe.readDimensions(data));
+      } catch (Exception e) {
+        LOG.log(
+            System.Logger.Level.DEBUG, "Failed to probe dimensions for entry: " + image.name(), e);
+        dimensions.add(null);
+      }
+    }
+    return dimensions;
+  }
+
+  /**
+   * Extracts a single image and transcodes it to JPEG format.
+   *
+   * @param path the archive path
+   * @param pageIndex the 0-based page index
+   * @param quality JPEG compression quality (0.0-1.0)
+   * @param maxPixelCount maximum pixel count for decompression bomb protection
+   * @return the JPEG-encoded image bytes
+   */
+  public static byte[] extractImageAsJpeg(
+      Path path, int pageIndex, float quality, long maxPixelCount) {
+    validatePath(path);
+    byte[] data = ImageExtractor.extractImage(path, pageIndex);
+    return ImageCodec.transcodeToJpeg(data, quality, maxPixelCount);
+  }
+
+  /**
+   * Extracts a single image by entry name and transcodes it to JPEG format.
+   *
+   * @param path the archive path
+   * @param entryName the entry name within the archive
+   * @param quality JPEG compression quality (0.0-1.0)
+   * @param maxPixelCount maximum pixel count for decompression bomb protection
+   * @return the JPEG-encoded image bytes
+   */
+  public static byte[] extractImageAsJpeg(
+      Path path, String entryName, float quality, long maxPixelCount) {
+    validatePath(path);
+    byte[] data = ImageExtractor.extractImage(path, entryName);
+    return ImageCodec.transcodeToJpeg(data, quality, maxPixelCount);
+  }
+
   // --- Internal ---
 
   private static ComicInfo readComicInfoInternal(Path path) {
@@ -191,6 +268,49 @@ public final class ComicArchiveReader {
   private static void validatePath(Path path) {
     if (path == null || !Files.isRegularFile(path)) {
       throw ComicError.ERR_C001.exception(path == null ? "null" : path.toString());
+    }
+  }
+
+  private static void validateArchiveSize(Path path, ComicProcessingPolicy policy) {
+    try {
+      long fileSize = Files.size(path);
+      if (fileSize > policy.maxArchiveBytes()) {
+        throw ComicError.ERR_C050.exception(
+            "%,d bytes exceeds limit of %,d bytes".formatted(fileSize, policy.maxArchiveBytes()));
+      }
+    } catch (IOException e) {
+      throw ComicError.ERR_C003.exception(path.toString(), e);
+    }
+  }
+
+  private static void validateEntries(Path path, ComicProcessingPolicy policy) {
+    try {
+      List<ArchiveEntry> entries = Archive.getEntries(path);
+      if (entries.size() > policy.maxEntries()) {
+        throw ComicError.ERR_C053.exception(
+            "%d entries exceeds limit of %d".formatted(entries.size(), policy.maxEntries()));
+      }
+
+      long totalUncompressedBytes = 0;
+      for (ArchiveEntry entry : entries) {
+        if (entry.getName() == null || entry.getName().endsWith("/")) continue;
+
+        long size = entry.getSize() != null ? entry.getSize() : 0;
+        if (size > policy.maxEntryBytes()) {
+          throw ComicError.ERR_C051.exception(
+              "Entry %s size %,d bytes exceeds limit of %,d bytes"
+                  .formatted(entry.getName(), size, policy.maxEntryBytes()));
+        }
+
+        totalUncompressedBytes += size;
+        if (totalUncompressedBytes > policy.maxTotalUncompressedBytes()) {
+          throw ComicError.ERR_C052.exception(
+              "Total uncompressed size %,d bytes exceeds limit of %,d bytes"
+                  .formatted(totalUncompressedBytes, policy.maxTotalUncompressedBytes()));
+        }
+      }
+    } catch (LibArchiveException e) {
+      throw ComicError.ERR_C003.exception(path.toString(), e);
     }
   }
 }
