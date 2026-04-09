@@ -568,7 +568,8 @@ public class PackageDocumentReader extends PackageDocumentBase {
       }
       if (resource.getMediaType() == MediaTypes.XHTML) {
         book.setCoverPage(resource);
-      } else if (MediaTypes.isBitmapImage(resource.getMediaType())) {
+      } else if (book.getCoverImage() == null
+          && MediaTypes.isBitmapImage(resource.getMediaType())) {
         book.setCoverImage(resource);
       }
     }

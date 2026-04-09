@@ -151,10 +151,11 @@ public class NavDocumentReader {
     }
 
     if (href != null && !href.isEmpty()) {
-      href = decodeUtf8(href);
-      String fullRef = StringUtil.collapsePathDots(navRoot + href);
-      String resourceHref = StringUtil.substringBefore(fullRef, Constants.FRAGMENT_SEPARATOR_CHAR);
-      String fragmentId = StringUtil.substringAfter(fullRef, Constants.FRAGMENT_SEPARATOR_CHAR);
+      int fragmentPos = href.indexOf(Constants.FRAGMENT_SEPARATOR_CHAR);
+      String rawResourceHref = fragmentPos >= 0 ? href.substring(0, fragmentPos) : href;
+      String rawFragmentId = fragmentPos >= 0 ? href.substring(fragmentPos + 1) : null;
+      String resourceHref = StringUtil.collapsePathDots(navRoot + decodeUtf8(rawResourceHref));
+      String fragmentId = rawFragmentId != null ? decodeUtf8(rawFragmentId) : null;
       Resource resource = book.getResources().getByHref(resourceHref);
       if (resource == null) {
         log.log(
@@ -224,6 +225,10 @@ public class NavDocumentReader {
         }
         buf[n++] = (byte) ((hi << 4) + lo);
         i += 3;
+      }
+      if (n == 0) {
+        log.log(System.Logger.Level.DEBUG, "Failed to decode nav href: " + value);
+        return value;
       }
       out.append(new String(buf, 0, n, StandardCharsets.UTF_8));
     }
