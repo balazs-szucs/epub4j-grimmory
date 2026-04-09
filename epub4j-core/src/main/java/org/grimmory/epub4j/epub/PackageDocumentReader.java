@@ -22,6 +22,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.regex.Pattern;
 import javax.xml.parsers.ParserConfigurationException;
 import org.grimmory.epub4j.Constants;
 import org.grimmory.epub4j.domain.Book;
@@ -51,6 +52,7 @@ public class PackageDocumentReader extends PackageDocumentBase {
 
   private static final System.Logger log = System.getLogger(PackageDocumentReader.class.getName());
   private static final String[] POSSIBLE_NCX_ITEM_IDS = {"toc", "ncx", "ncxtoc"};
+  private static final Pattern WHITESPACE_PATTERN = Pattern.compile("\\s+");
 
   public static void read(
       Resource packageResource, EpubReader epubReader, Book book, Resources resources)
@@ -175,7 +177,7 @@ public class PackageDocumentReader extends PackageDocumentBase {
       }
       if (propertiesAttr != null && !propertiesAttr.isEmpty()) {
         Set<ManifestItemProperties> props = EnumSet.noneOf(ManifestItemProperties.class);
-        for (String token : propertiesAttr.trim().split("\\s+")) {
+        for (String token : WHITESPACE_PATTERN.split(propertiesAttr.trim())) {
           for (ManifestItemProperties mip : ManifestItemProperties.values()) {
             if (mip.getName().equals(token)) {
               props.add(mip);

@@ -8,6 +8,7 @@ package org.grimmory.epub4j.epub;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.regex.Pattern;
 import org.grimmory.epub4j.Constants;
 import org.grimmory.epub4j.domain.Book;
 import org.grimmory.epub4j.domain.Resource;
@@ -31,6 +32,7 @@ public class NavDocumentReader {
   private static final System.Logger log = System.getLogger(NavDocumentReader.class.getName());
   private static final String NAMESPACE_XHTML = "http://www.w3.org/1999/xhtml";
   private static final String NAMESPACE_EPUB_OPS = "http://www.idpf.org/2007/ops";
+  private static final Pattern WHITESPACE_PATTERN = Pattern.compile("\\s+");
 
   /**
    * Reads the EPUB3 nav document and populates the book's table of contents.
@@ -88,7 +90,7 @@ public class NavDocumentReader {
         epubType = nav.getAttribute("epub:type");
       }
       if (epubType != null) {
-        for (String token : epubType.trim().split("\\s+")) {
+        for (String token : WHITESPACE_PATTERN.split(epubType.trim())) {
           if ("toc".equals(token)) {
             return nav;
           }
