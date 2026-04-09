@@ -132,10 +132,23 @@ public final class DirectoryEpubContainer implements EpubContainer {
     }
   }
 
+  /**
+   * Resolve a relative entry name to an absolute path that is guaranteed to stay under the
+   * container root. Rejects names containing {@code ../} traversal sequences.
+   */
+  private Path safePath(String name) throws IOException {
+    Path normalizedRoot = root.normalize();
+    Path filePath = normalizedRoot.resolve(name).normalize();
+    if (!filePath.startsWith(normalizedRoot)) {
+      throw new IOException("Path escapes container root: " + name);
+    }
+    return filePath;
+  }
+
   @Override
   public byte[] readBytes(String name) throws IOException {
     checkOpen();
-    Path filePath = root.resolve(name);
+    Path filePath = safePath(name);
     if (!Files.exists(filePath)) {
       throw new IOException("File not found: " + name);
     }
@@ -145,7 +158,7 @@ public final class DirectoryEpubContainer implements EpubContainer {
   @Override
   public void streamTo(String name, OutputStream out) throws IOException {
     checkOpen();
-    Path filePath = root.resolve(name);
+    Path filePath = safePath(name);
     if (!Files.exists(filePath)) {
       throw new IOException("File not found: " + name);
     }
@@ -155,7 +168,7 @@ public final class DirectoryEpubContainer implements EpubContainer {
   @Override
   public void writeBytes(String name, byte[] data) throws IOException {
     checkOpen();
-    Path filePath = root.resolve(name);
+    Path filePath = safePath(name);
 
     // Create parent directories if needed
     Path parent = filePath.getParent();
@@ -170,14 +183,18 @@ public final class DirectoryEpubContainer implements EpubContainer {
 
   @Override
   public boolean exists(String name) {
-    Path filePath = root.resolve(name);
-    return Files.exists(filePath);
+    try {
+      Path filePath = safePath(name);
+      return Files.exists(filePath);
+    } catch (IOException e) {
+      return false;
+    }
   }
 
   @Override
   public void delete(String name) throws IOException {
     checkOpen();
-    Path filePath = root.resolve(name);
+    Path filePath = safePath(name);
     if (!Files.exists(filePath)) {
       throw new IOException("File not found: " + name);
     }

@@ -189,6 +189,9 @@ public final class ZipEpubContainer implements EpubContainer {
    * not exist.
    */
   private byte[] readBytesInternal(String name) throws IOException {
+    if (deletedEntries.contains(name)) {
+      return null;
+    }
     byte[] cached = dirtyCache.get(name);
     if (cached != null) {
       return cached;
@@ -218,6 +221,9 @@ public final class ZipEpubContainer implements EpubContainer {
   @Override
   public void streamTo(String name, OutputStream out) throws IOException {
     checkOpen();
+    if (deletedEntries.contains(name)) {
+      throw new IOException("File not found: " + name);
+    }
     byte[] cached = dirtyCache.get(name);
     if (cached != null) {
       out.write(cached);

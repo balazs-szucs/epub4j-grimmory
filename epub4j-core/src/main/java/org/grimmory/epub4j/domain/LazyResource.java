@@ -83,6 +83,10 @@ public final class LazyResource extends Resource {
    */
   @Override
   public void writeTo(OutputStream out) throws IOException {
+    if (isInitialized()) {
+      out.write(getData());
+      return;
+    }
     try (InputStream in = resourceProvider.getResourceStream(this.originalHref)) {
       in.transferTo(out);
     }

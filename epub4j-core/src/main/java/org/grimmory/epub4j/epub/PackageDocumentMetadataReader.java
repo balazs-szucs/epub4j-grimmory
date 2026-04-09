@@ -392,20 +392,23 @@ class PackageDocumentMetadataReader extends PackageDocumentBase {
         continue;
       }
       String text = meta.getTextContent().trim();
+      if (StringUtil.isBlank(text)) {
+        continue;
+      }
 
       switch (property) {
         case "rendition:layout" -> {
-          if (result.getRenditionLayout() == null) {
+          if (StringUtil.isBlank(refines) && result.getRenditionLayout() == null) {
             result.setRenditionLayout(text);
           }
         }
         case "rendition:orientation" -> {
-          if (result.getRenditionOrientation() == null) {
+          if (StringUtil.isBlank(refines) && result.getRenditionOrientation() == null) {
             result.setRenditionOrientation(text);
           }
         }
         case "rendition:spread" -> {
-          if (result.getRenditionSpread() == null) {
+          if (StringUtil.isBlank(refines) && result.getRenditionSpread() == null) {
             result.setRenditionSpread(text);
           }
         }

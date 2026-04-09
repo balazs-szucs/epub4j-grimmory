@@ -5,8 +5,7 @@
  */
 package org.grimmory.epub4j.epub;
 
-import java.net.URLDecoder;
-import java.nio.charset.StandardCharsets;
+import java.net.URI;
 import java.util.ArrayList;
 import java.util.List;
 import org.grimmory.epub4j.Constants;
@@ -188,13 +187,20 @@ public class NavDocumentReader {
     return null;
   }
 
+  /**
+   * Decodes a percent-encoded URI reference using RFC 3986 semantics. Unlike {@code URLDecoder},
+   * this does not treat {@code +} as a space character.
+   */
   private static String decodeUtf8(String value) {
     if (value == null) {
       return null;
     }
     try {
-      return URLDecoder.decode(value, StandardCharsets.UTF_8);
-    } catch (IllegalArgumentException e) {
+      URI uri = new URI(value);
+      String decoded = uri.getSchemeSpecificPart();
+      String fragment = uri.getFragment();
+      return fragment != null ? decoded + "#" + fragment : decoded;
+    } catch (Exception e) {
       log.log(System.Logger.Level.DEBUG, "Failed to decode nav href: " + value);
       return value;
     }
