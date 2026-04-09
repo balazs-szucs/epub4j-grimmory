@@ -1749,7 +1749,7 @@ public class EpubNativeHeaders extends EpubNativeHeaders$shared {
      */
     @FunctionalInterface
     public interface ArchiveReadCallback {
-        void invoke(MemorySegment data, long size, MemorySegment userData);
+        int invoke(MemorySegment data, long size, MemorySegment userData);
     }
 
     /**
@@ -1758,7 +1758,8 @@ public class EpubNativeHeaders extends EpubNativeHeaders$shared {
      * void callback(const void* data, size_t size, void* user_data)
      * }
      */
-    public static final FunctionDescriptor ARCHIVE_READ_CALLBACK_DESC = FunctionDescriptor.ofVoid(
+    public static final FunctionDescriptor ARCHIVE_READ_CALLBACK_DESC = FunctionDescriptor.of(
+        C_INT,
         C_POINTER, C_LONG_LONG, C_POINTER
     );
 

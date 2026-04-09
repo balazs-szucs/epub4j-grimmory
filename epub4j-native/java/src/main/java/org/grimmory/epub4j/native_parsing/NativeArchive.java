@@ -249,6 +249,7 @@ public class NativeArchive implements AutoCloseable {
      */
     public void streamEntry(String entryPath, OutputStream out) throws IOException {
         checkOpen();
+        java.util.Objects.requireNonNull(out, "out");
 
         if (!nativeAvailable) {
             throw new EpubNativeException("Native archive library not available");
@@ -257,19 +258,21 @@ public class NativeArchive implements AutoCloseable {
         try (Arena callbackArena = Arena.ofConfined()) {
             MemorySegment entryPathSegment = toNativeString(entryPath, callbackArena);
 
-            // Capture IOExceptions thrown inside the callback
-            IOException[] captured = new IOException[1];
+            // Capture any throwable thrown inside the callback and rethrow it on the Java side
+            Throwable[] captured = new Throwable[1];
 
             EpubNativeHeaders.ArchiveReadCallback callback = (data, size, _userData) -> {
                 if (captured[0] != null) {
-                    return; // already failed, skip remaining chunks
+                    return 1; // already failed, skip remaining chunks
                 }
                 try {
                     // Reinterpret the pointer so we can read 'size' bytes from it
                     byte[] chunk = data.reinterpret(size).toArray(JAVA_BYTE);
                     out.write(chunk);
-                } catch (IOException e) {
-                    captured[0] = e;
+                    return 0; // Success
+                } catch (Throwable t) {
+                    captured[0] = t;
+                    return 1; // Failure
                 }
             };
 
@@ -282,9 +285,17 @@ public class NativeArchive implements AutoCloseable {
                 MemorySegment.NULL
             );
 
-            // Check for IOException from the callback first
             if (captured[0] != null) {
-                throw captured[0];
+                if (captured[0] instanceof IOException io) {
+                    throw io;
+                }
+                if (captured[0] instanceof RuntimeException re) {
+                    throw re;
+                }
+                if (captured[0] instanceof Error err) {
+                    throw err;
+                }
+                throw new EpubNativeException("Callback failed while streaming entry: " + entryPath, captured[0]);
             }
 
             if (errorCode == EPUB_NATIVE_ERROR_NOT_FOUND) {

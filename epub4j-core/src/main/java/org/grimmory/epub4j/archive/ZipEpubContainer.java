@@ -32,8 +32,6 @@ import org.w3c.dom.Document;
  */
 public final class ZipEpubContainer implements EpubContainer {
 
-  private static final System.Logger log = System.getLogger(ZipEpubContainer.class.getName());
-
   private final Path path;
   private final Map<String, byte[]> dirtyCache;
   private final Set<String> deletedEntries;
@@ -307,7 +305,9 @@ public final class ZipEpubContainer implements EpubContainer {
           dirtyCache.put(name, data);
         }
       } catch (IOException e) {
-        log.log(System.Logger.Level.DEBUG, "markDirty: failed to pre-load entry " + name, e);
+        // Entry will be loaded on next readBytes call; log for debugging
+        System.getLogger(ZipEpubContainer.class.getName())
+            .log(System.Logger.Level.DEBUG, "markDirty: failed to pre-load entry " + name, e);
       }
     }
   }

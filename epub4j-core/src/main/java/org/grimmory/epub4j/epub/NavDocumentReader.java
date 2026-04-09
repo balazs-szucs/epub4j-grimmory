@@ -95,13 +95,21 @@ public class NavDocumentReader {
     return null;
   }
 
+  private static boolean hasName(Element element, String expected) {
+    String name = element.getLocalName();
+    if (name == null || name.isEmpty()) {
+      name = element.getTagName();
+    }
+    return expected.equals(name);
+  }
+
   private static List<TOCReference> readOlEntries(Element olElement, String navRoot, Book book) {
     List<TOCReference> result = new ArrayList<>();
     NodeList children = olElement.getChildNodes();
     int childCount = children.getLength();
     for (int i = 0; i < childCount; i++) {
       Node node = children.item(i);
-      if (node instanceof Element li && "li".equals(li.getLocalName())) {
+      if (node instanceof Element li && hasName(li, "li")) {
         TOCReference ref = readLiEntry(li, navRoot, book);
         if (ref != null) {
           result.add(ref);
@@ -123,13 +131,12 @@ public class NavDocumentReader {
       if (!(node instanceof Element child)) {
         continue;
       }
-      String localName = child.getLocalName();
-      if ("a".equals(localName)) {
+      if (hasName(child, "a")) {
         label = child.getTextContent().trim();
         href = child.getAttribute("href");
-      } else if ("span".equals(localName) && label == null) {
+      } else if (label == null && hasName(child, "span")) {
         label = child.getTextContent().trim();
-      } else if ("ol".equals(localName)) {
+      } else if (hasName(child, "ol")) {
         children = readOlEntries(child, navRoot, book);
       }
     }
@@ -148,6 +155,12 @@ public class NavDocumentReader {
         log.log(
             System.Logger.Level.WARNING,
             "Resource with href '" + resourceHref + "' referenced in nav document not found");
+        if (children.isEmpty()) {
+          return null;
+        }
+        TOCReference ref = new TOCReference(label, null, null);
+        ref.setChildren(children);
+        return ref;
       }
       TOCReference ref = new TOCReference(label, resource, fragmentId);
       ref.setChildren(children);
@@ -168,7 +181,7 @@ public class NavDocumentReader {
     NodeList children = parent.getChildNodes();
     int childCount = children.getLength();
     for (int i = 0; i < childCount; i++) {
-      if (children.item(i) instanceof Element child && localName.equals(child.getLocalName())) {
+      if (children.item(i) instanceof Element child && hasName(child, localName)) {
         return child;
       }
     }
