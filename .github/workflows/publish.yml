@@ -127,10 +127,10 @@ jobs:
             echo "Staged ${classifier}/${lib_name} ($(stat -c%s "${dest}/${lib_name}") bytes)"
           }
 
-          stage linux-x86_64  libepub4j_native.so
-          stage linux-aarch64 libepub4j_native.so
           stage linux-musl-x86_64  libepub4j_native.so
           stage linux-musl-aarch64 libepub4j_native.so
+          stage linux-x86_64  libepub4j_native.so
+          stage linux-aarch64 libepub4j_native.so
           stage macos-x86_64  libepub4j_native.dylib
           stage macos-aarch64 libepub4j_native.dylib
           stage windows-x86_64 epub4j_native.dll
