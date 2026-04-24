@@ -140,8 +140,9 @@ tasks.withType<Test>().configureEach {
     jvmArgs("-Djava.library.path=$libPath")
 }
 
-tasks.named("processResources") {
-    // Main JAR includes all platforms; classifier JARs exist for size-conscious consumers
+// Keep native binaries out of the main jar; they are published as classifier artifacts.
+tasks.named<Jar>("jar") {
+    exclude(requiredNativeClassifiers.map { "$it/**" })
 }
 
 // -- Per-platform classifier JARs --
