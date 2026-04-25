@@ -114,14 +114,12 @@ public class XmlSerializer {
   }
 
   private void serializeToken(Object item, XMLStreamWriter writer) throws XMLStreamException {
-    if (item instanceof ContentNode contentNode) {
-      writer.writeCharacters(contentNode.getContent());
-    } else if (item instanceof CommentNode commentNode) {
-      writer.writeComment(commentNode.getContent());
-    } else if (item instanceof EndTagToken) {
-      return;
-    } else if (item instanceof TagNode tagNode) {
-      serialize(tagNode, writer);
+    switch (item) {
+      case ContentNode contentNode -> writer.writeCharacters(contentNode.getContent());
+      case CommentNode commentNode -> writer.writeComment(commentNode.getContent());
+      case EndTagToken _ -> {}
+      case TagNode tagNode -> serialize(tagNode, writer);
+      case null, default -> {}
     }
   }
 }
